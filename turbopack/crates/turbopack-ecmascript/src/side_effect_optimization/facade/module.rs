@@ -111,7 +111,16 @@ impl Module for EcmascriptModuleFacadeModule {
                 references
             }
             ModulePart::StarReexports { .. } => {
-                vec![]
+                let Some(module) =
+                    Vc::try_resolve_sidecast::<Box<dyn EcmascriptAnalyzable>>(self.module).await?
+                else {
+                    bail!(
+                        "Expected EcmascriptModuleAsset for a EcmascriptModuleFacadeModule with \
+                         ModulePart::Evaluation"
+                    );
+                };
+                let result = module.analyze().await?;
+                result.reexport_references.await?.clone_value()
             }
             ModulePart::Facade => {
                 vec![
@@ -201,7 +210,16 @@ impl EcmascriptChunkPlaceable for EcmascriptModuleFacadeModule {
                 }
                 star_exports.extend(esm_exports.star_exports.iter().copied());
             }
-            ModulePart::StarReexports => {}
+            ModulePart::StarReexports => {
+                let EcmascriptExports::EsmExports(esm_exports) = *self.module.get_exports().await?
+                else {
+                    bail!(
+                        "EcmascriptModuleFacadeModule must only be used on modules with EsmExports"
+                    );
+                };
+                let esm_exports = esm_exports.await?;
+                star_exports.extend(esm_exports.star_exports.iter().copied());
+            }
             ModulePart::Facade => {
                 // Reexport everything from the reexports module
                 // (including default export if any)
