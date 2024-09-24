@@ -113,6 +113,27 @@ pub(crate) struct ItemData {
     pub export: Option<JsWord>,
 }
 
+impl ItemData {
+    pub(super) fn skip_content(&self) -> bool {
+        // Skip directives, as we copy them to each modules.
+        if let ModuleItem::Stmt(Stmt::Expr(ExprStmt {
+            expr: box Expr::Lit(Lit::Str(s)),
+            ..
+        })) = &self.content
+        {
+            if s.value.starts_with("use ") {
+                return true;
+            }
+        }
+
+        if let ModuleItem::ModuleDecl(ModuleDecl::ExportAll(..)) = &self.content {
+            return true;
+        }
+
+        false
+    }
+}
+
 impl fmt::Debug for ItemData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ItemData")
@@ -509,23 +530,12 @@ impl DepGraph {
             }
 
             for g in group {
-                let item = &data[g].content;
-                // Skip directives, as we copy them to each modules.
-                if let ModuleItem::Stmt(Stmt::Expr(ExprStmt {
-                    expr: box Expr::Lit(Lit::Str(s)),
-                    ..
-                })) = item
-                {
-                    if s.value.starts_with("use ") {
-                        continue;
-                    }
-                }
-
-                if let ModuleItem::ModuleDecl(ModuleDecl::ExportAll(..)) = item {
+                let item = &data[g];
+                if item.skip_content() {
                     continue;
                 }
 
-                chunk.body.push(item.clone());
+                chunk.body.push(item.content.clone());
             }
 
             for g in group {
