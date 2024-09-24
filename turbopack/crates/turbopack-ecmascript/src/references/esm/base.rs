@@ -151,8 +151,8 @@ impl ModuleReference for EsmAssetReference {
     async fn resolve_reference(&self) -> Result<Vc<ModuleResolveResult>> {
         let ty = if matches!(self.annotations.module_type(), Some("json")) {
             EcmaScriptModulesReferenceSubType::ImportWithType(ImportWithType::Json)
-        } else if let Some(part) = &self.export_name {
-            EcmaScriptModulesReferenceSubType::ImportPart(*part)
+        } else if let Some(part) = self.export_name {
+            EcmaScriptModulesReferenceSubType::ImportPart(part)
         } else {
             EcmaScriptModulesReferenceSubType::Import
         };
@@ -165,10 +165,12 @@ impl ModuleReference for EsmAssetReference {
                             .await?
                             .expect("EsmAssetReference origin should be a EcmascriptModuleAsset");
 
-                    return Ok(ModuleResolveResult::module(
-                        EcmascriptModulePartAsset::select_part(module, part),
-                    )
-                    .cell());
+                    let part_module = *EcmascriptModulePartAsset::select_part(module, part).await?;
+
+                    return match part_module {
+                        Some(part_module) => Ok(ModuleResolveResult::module(part_module).cell()),
+                        None => Ok(ModuleResolveResult::ignored().cell()),
+                    };
                 }
 
                 bail!("export_name is required for part import")
@@ -185,18 +187,22 @@ impl ModuleReference for EsmAssetReference {
 
         if let Some(part) = self.export_name {
             let part = part.await?;
-            if let &ModulePart::Export(export_name) = &*part {
-                for &module in result.primary_modules().await? {
-                    if let Some(module) = Vc::try_resolve_downcast(module).await? {
-                        let export = export_name.await?;
-                        if *is_export_missing(module, export.clone_value()).await? {
-                            InvalidExport {
-                                export: export_name,
-                                module,
-                                source: self.issue_source,
+            if let &ModulePart::Export(export_name, is_proxy) = &*part {
+                // If is_proxy true, user did not speicifed the exact export name in the direct
+                // import. Instead, they did `export * from './foo'`.
+                if !*is_proxy.await? {
+                    for &module in result.primary_modules().await? {
+                        if let Some(module) = Vc::try_resolve_downcast(module).await? {
+                            let export = export_name.await?;
+                            if *is_export_missing(module, export.clone_value()).await? {
+                                InvalidExport {
+                                    export: export_name,
+                                    module,
+                                    source: self.issue_source,
+                                }
+                                .cell()
+                                .emit();
                             }
-                            .cell()
-                            .emit();
                         }
                     }
                 }

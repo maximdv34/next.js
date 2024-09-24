@@ -209,8 +209,6 @@ pub(super) struct SplitModuleResult {
     /// Dependency between parts.
     pub part_deps: FxHashMap<u32, Vec<PartId>>,
     pub modules: Vec<Module>,
-
-    pub star_reexports: Vec<ExportAll>,
 }
 
 impl DepGraph {
@@ -247,7 +245,7 @@ impl DepGraph {
         data: &FxHashMap<ItemId, ItemData>,
     ) -> SplitModuleResult {
         let groups = self.finalize(data);
-        let mut exports = FxHashMap::default();
+        let mut results = FxHashMap::default();
         let mut part_deps = FxHashMap::<_, Vec<PartId>>::default();
 
         let star_reexports: Vec<_> = data
@@ -256,8 +254,14 @@ impl DepGraph {
             .cloned()
             .collect();
         let mut modules = vec![];
+
         let mut exports_module = Module::dummy();
         exports_module.body.extend(directives.iter().cloned());
+
+        let mut star_reexports_module = Module::dummy();
+        star_reexports_module
+            .body
+            .extend(directives.iter().cloned());
 
         if groups.graph_ix.is_empty() {
             // If there's no dependency, all nodes are in the module evaluaiotn group.
@@ -266,7 +270,7 @@ impl DepGraph {
                 body: data.values().map(|v| v.content.clone()).collect(),
                 shebang: None,
             });
-            exports.insert(Key::ModuleEvaluation, 0);
+            results.insert(Key::ModuleEvaluation, 0);
         }
 
         let mut declarator = FxHashMap::default();
@@ -337,7 +341,7 @@ impl DepGraph {
                     ItemId::Group(ItemIdGroupKind::Export(..)) => {
                         if let Some(export) = &data[item].export {
                             use_export_instead_of_declarator = true;
-                            exports.insert(Key::Export(export.as_str().into()), ix as u32);
+                            results.insert(Key::Export(export.as_str().into()), ix as u32);
 
                             let s = ExportSpecifier::Named(ExportNamedSpecifier {
                                 span: DUMMY_SP,
@@ -363,7 +367,7 @@ impl DepGraph {
                         }
                     }
                     ItemId::Group(ItemIdGroupKind::ModuleEvaluation) => {
-                        exports.insert(Key::ModuleEvaluation, ix as u32);
+                        results.insert(Key::ModuleEvaluation, ix as u32);
                     }
 
                     _ => {}
@@ -505,18 +509,23 @@ impl DepGraph {
             }
 
             for g in group {
+                let item = &data[g].content;
                 // Skip directives, as we copy them to each modules.
                 if let ModuleItem::Stmt(Stmt::Expr(ExprStmt {
                     expr: box Expr::Lit(Lit::Str(s)),
                     ..
-                })) = &data[g].content
+                })) = item
                 {
                     if s.value.starts_with("use ") {
                         continue;
                     }
                 }
 
-                chunk.body.push(data[g].content.clone());
+                if let ModuleItem::ModuleDecl(ModuleDecl::ExportAll(..)) = item {
+                    continue;
+                }
+
+                chunk.body.push(item.clone());
             }
 
             for g in group {
@@ -562,21 +571,36 @@ impl DepGraph {
             modules.push(chunk);
         }
 
-        exports.insert(Key::Exports, modules.len() as u32);
-
-        for star in &star_reexports {
+        if !star_reexports.is_empty() {
+            // `Exports` module should export everything from the re-exported modules
             exports_module
                 .body
-                .push(ModuleItem::ModuleDecl(ModuleDecl::ExportAll(star.clone())));
+                .push(ModuleItem::ModuleDecl(ModuleDecl::ExportAll(ExportAll {
+                    span: DUMMY_SP,
+                    src: Box::new(TURBOPACK_PART_IMPORT_SOURCE.into()),
+                    type_only: false,
+                    with: Some(Box::new(create_turbopack_part_id_assert(
+                        PartId::StarReexports,
+                    ))),
+                })));
+
+            for star in &star_reexports {
+                star_reexports_module
+                    .body
+                    .push(ModuleItem::ModuleDecl(ModuleDecl::ExportAll(star.clone())));
+            }
+
+            results.insert(Key::StarReexports, modules.len() as u32);
+            modules.push(star_reexports_module);
         }
 
+        results.insert(Key::Exports, modules.len() as u32);
         modules.push(exports_module);
 
         SplitModuleResult {
-            entrypoints: exports,
+            entrypoints: results,
             part_deps,
             modules,
-            star_reexports,
         }
     }
 
@@ -911,7 +935,7 @@ impl DepGraph {
                         // One item for the import for re-export
                         let id = ItemId::Item {
                             index,
-                            kind: ItemIdItemKind::ImportOfModule,
+                            kind: ItemIdItemKind::Normal,
                         };
                         ids.push(id.clone());
                         items.insert(
@@ -1304,6 +1328,7 @@ pub(crate) enum PartId {
     Export(RcStr),
     /// `(part_id, is_for_eval)`
     Internal(u32, bool),
+    StarReexports,
 }
 
 pub(crate) fn create_turbopack_part_id_assert(dep: PartId) -> ObjectLit {
@@ -1325,6 +1350,7 @@ pub(crate) fn create_turbopack_part_id_assert(dep: PartId) -> ObjectLit {
                     }
                 }
                 .into(),
+                PartId::StarReexports => "reexports".into(),
             },
         })))],
     }
@@ -1346,6 +1372,7 @@ pub(crate) fn find_turbopack_part_id_in_asserts(asserts: &ObjectLit) -> Option<P
         })) if &*key.sym == ASSERT_CHUNK_KEY => match &*s.value {
             "module evaluation" => Some(PartId::ModuleEvaluation),
             "exports" => Some(PartId::Exports),
+            "reexports" => Some(PartId::StarReexports),
             _ if s.value.starts_with("export ") => Some(PartId::Export(s.value[7..].into())),
             _ => None,
         },

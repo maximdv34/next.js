@@ -2862,7 +2862,10 @@ pub enum ModulePart {
     /// all exports are unused.
     Evaluation,
     /// Represents an export of a module.
-    Export(Vc<RcStr>),
+    ///
+    ///
+    /// bool value is true if it's proxied for `export * from './foo'`
+    Export(Vc<RcStr>, Vc<bool>),
     /// Represents a renamed export of a module.
     RenamedExport {
         original_export: Vc<RcStr>,
@@ -2876,6 +2879,8 @@ pub enum ModulePart {
     Locals,
     /// The whole exports of a module.
     Exports,
+    /// The whole reexports of a module.
+    StarReexports,
     /// A facade of the module behaving like the original, but referencing
     /// internal parts.
     Facade,
@@ -2889,7 +2894,11 @@ impl ModulePart {
     }
     #[turbo_tasks::function]
     pub fn export(export: RcStr) -> Vc<Self> {
-        ModulePart::Export(Vc::cell(export)).cell()
+        ModulePart::Export(Vc::cell(export), Vc::cell(false)).cell()
+    }
+    #[turbo_tasks::function]
+    pub fn proxied_export(export: Vc<RcStr>) -> Vc<Self> {
+        ModulePart::Export(export, Vc::cell(true)).cell()
     }
     #[turbo_tasks::function]
     pub fn renamed_export(original_export: RcStr, export: RcStr) -> Vc<Self> {
@@ -2919,6 +2928,10 @@ impl ModulePart {
         ModulePart::Exports.cell()
     }
     #[turbo_tasks::function]
+    pub fn star_reexports() -> Vc<Self> {
+        ModulePart::StarReexports.cell()
+    }
+    #[turbo_tasks::function]
     pub fn facade() -> Vc<Self> {
         ModulePart::Facade.cell()
     }
@@ -2930,7 +2943,7 @@ impl ValueToString for ModulePart {
     async fn to_string(&self) -> Result<Vc<RcStr>> {
         Ok(Vc::cell(match self {
             ModulePart::Evaluation => "module evaluation".into(),
-            ModulePart::Export(export) => format!("export {}", export.await?).into(),
+            ModulePart::Export(export, _) => format!("export {}", export.await?).into(),
             ModulePart::RenamedExport {
                 original_export,
                 export,
@@ -2945,6 +2958,7 @@ impl ValueToString for ModulePart {
             ModulePart::Internal(id) => format!("internal part {}", id,).into(),
             ModulePart::Locals => "locals".into(),
             ModulePart::Exports => "exports".into(),
+            ModulePart::StarReexports => "reexports".into(),
             ModulePart::Facade => "facade".into(),
         }))
     }

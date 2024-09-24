@@ -104,7 +104,14 @@ impl Module for EcmascriptModuleFacadeModule {
                     self.module,
                     ModulePart::locals(),
                 )));
+                references.push(Vc::upcast(EcmascriptModulePartReference::new_part(
+                    self.module,
+                    ModulePart::star_reexports(),
+                )));
                 references
+            }
+            ModulePart::StarReexports { .. } => {
+                vec![]
             }
             ModulePart::Facade => {
                 vec![
@@ -194,6 +201,7 @@ impl EcmascriptChunkPlaceable for EcmascriptModuleFacadeModule {
                 }
                 star_exports.extend(esm_exports.star_exports.iter().copied());
             }
+            ModulePart::StarReexports => {}
             ModulePart::Facade => {
                 // Reexport everything from the reexports module
                 // (including default export if any)
@@ -268,6 +276,7 @@ impl EcmascriptChunkPlaceable for EcmascriptModuleFacadeModule {
                 .module
                 .is_marked_as_side_effect_free(side_effect_free_packages),
             ModulePart::Exports
+            | ModulePart::StarReexports
             | ModulePart::RenamedExport { .. }
             | ModulePart::RenamedNamespace { .. } => Vc::cell(true),
             _ => bail!("Unexpected ModulePart for EcmascriptModuleFacadeModule"),
