@@ -21,7 +21,7 @@ use clap::Parser;
 use serde::Deserialize;
 #[cfg(feature = "node-api")]
 use serde::Serialize;
-use tokio::sync::mpsc::channel;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use turbo_tasks::{
     backend::Backend, util::FormatDuration, RcStr, ReadConsistency, TaskId, TransientInstance,
     TransientValue, TurboTasks, UpdateInfo, Value, Vc,
@@ -83,8 +83,11 @@ pub struct CacheArgs {}
 )]
 #[derive(Debug, Clone)]
 pub struct CommonArgs {
+    /// A list of input files to perform a trace on
     input: Vec<String>,
 
+    /// The folder to consider as the root when performing the trace. All traced files must reside
+    /// in this directory
     #[cfg_attr(feature = "cli", clap(short, long))]
     #[cfg_attr(feature = "node-api", serde(default))]
     context_directory: Option<String>,
@@ -138,21 +141,21 @@ pub struct CommonArgs {
 )]
 #[derive(Debug)]
 pub enum Args {
-    // Print all files that the input files reference
+    /// Print all files that the input files reference
     Print {
         #[cfg_attr(feature = "cli", clap(flatten))]
         #[cfg_attr(feature = "node-api", serde(flatten))]
         common: CommonArgs,
     },
 
-    // Adds a *.nft.json file next to each input file which lists the referenced files
+    /// Adds a *.nft.json file next to each input file which lists the referenced files
     Annotate {
         #[cfg_attr(feature = "cli", clap(flatten))]
         #[cfg_attr(feature = "node-api", serde(flatten))]
         common: CommonArgs,
     },
 
-    // Copy input files and all referenced files to the output directory
+    /// Copy input files and all referenced files to the output directory
     Build {
         #[cfg_attr(feature = "cli", clap(flatten))]
         #[cfg_attr(feature = "node-api", serde(flatten))]
@@ -163,7 +166,7 @@ pub enum Args {
         output_directory: String,
     },
 
-    // Print total size of input and referenced files
+    /// Print total size of input and referenced files
     Size {
         #[cfg_attr(feature = "cli", clap(flatten))]
         #[cfg_attr(feature = "node-api", serde(flatten))]
@@ -183,6 +186,13 @@ impl Args {
             | Args::Annotate { common, .. }
             | Args::Build { common, .. }
             | Args::Size { common, .. } => common,
+        }
+    }
+
+    fn output_pair(&self) -> Option<(Sender<Vec<RcStr>>, Receiver<Vec<RcStr>>)> {
+        match self {
+            Args::Print { .. } | Args::Annotate { .. } => Some(channel(1)),
+            _ => None,
         }
     }
 }
@@ -393,9 +403,7 @@ async fn run<B: Backend + 'static, F: Future<Output = ()>>(
             result
         }
     };
-    let has_return_value =
-        matches!(&*args, Args::Annotate { .. }) || matches!(&*args, Args::Print { .. });
-    let (sender, mut receiver) = channel(1);
+
     let dir = current_dir().unwrap();
     let module_options = TransientInstance::new(module_options.unwrap_or_default());
     let resolve_options = TransientInstance::new(resolve_options.unwrap_or_default());
@@ -406,6 +414,9 @@ async fn run<B: Backend + 'static, F: Future<Output = ()>>(
         log_detail,
         log_level: log_level.map_or_else(|| IssueSeverity::Error, |l| l.0),
     });
+
+    let (sender, receiver) = args.output_pair().unzip();
+
     let task = tt.spawn_root_task(move || {
         let dir = dir.clone();
         let args = args.clone();
@@ -434,22 +445,21 @@ async fn run<B: Backend + 'static, F: Future<Output = ()>>(
                 )
                 .await?;
 
-            if has_return_value {
+            if let Some(sender) = sender {
                 let output_read_ref = output.await?;
                 let output_iter = output_read_ref.iter().cloned();
                 sender.send(output_iter.collect::<Vec<RcStr>>()).await?;
                 drop(sender);
             }
+
             Ok::<Vc<()>, _>(Default::default())
         })
     });
+
     finish(tt, task).await?;
-    let output = if has_return_value {
-        receiver.try_recv()?
-    } else {
-        Vec::new()
-    };
-    Ok(output)
+    receiver
+        .map(|mut r| Ok(r.try_recv()?))
+        .unwrap_or(Ok(Vec::new()))
 }
 
 #[turbo_tasks::function]
