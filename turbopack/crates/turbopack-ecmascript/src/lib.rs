@@ -58,7 +58,8 @@ pub use transform::{
     TransformContext, TransformPlugin, UnsupportedServerActionIssue,
 };
 use turbo_tasks::{
-    trace::TraceRawVcs, RcStr, ReadRef, TaskInput, TryJoinIterExt, Value, ValueToString, Vc,
+    trace::TraceRawVcs, RcStr, ReadRef, ResolvedVc, TaskInput, TryJoinIterExt, Value,
+    ValueToString, Vc,
 };
 use turbo_tasks_fs::{rope::Rope, FileJsonContent, FileSystemPath};
 use turbopack_core::{
@@ -248,7 +249,7 @@ pub struct EcmascriptModuleAsset {
     pub transforms: Vc<EcmascriptInputTransforms>,
     pub options: Vc<EcmascriptOptions>,
     pub compile_time_info: Vc<CompileTimeInfo>,
-    pub inner_assets: Option<Vc<InnerAssets>>,
+    pub inner_assets: Option<ResolvedVc<InnerAssets>>,
     #[turbo_tasks(debug_ignore)]
     last_successful_parse: turbo_tasks::TransientState<ReadRef<ParseResult>>,
 }
@@ -280,11 +281,11 @@ pub trait EcmascriptAnalyzable {
 
 /// An optional [EcmascriptModuleAsset]
 #[turbo_tasks::value(transparent)]
-pub struct OptionEcmascriptModuleAsset(Option<Vc<EcmascriptModuleAsset>>);
+pub struct OptionEcmascriptModuleAsset(Option<ResolvedVc<EcmascriptModuleAsset>>);
 
 /// A list of [EcmascriptModuleAsset]s
 #[turbo_tasks::value(transparent)]
-pub struct EcmascriptModuleAssets(Vec<Vc<EcmascriptModuleAsset>>);
+pub struct EcmascriptModuleAssets(Vec<ResolvedVc<EcmascriptModuleAsset>>);
 
 impl EcmascriptModuleAsset {
     pub fn builder(
@@ -447,7 +448,7 @@ impl EcmascriptModuleAsset {
         transforms: Vc<EcmascriptInputTransforms>,
         options: Vc<EcmascriptOptions>,
         compile_time_info: Vc<CompileTimeInfo>,
-        inner_assets: Vc<InnerAssets>,
+        inner_assets: ResolvedVc<InnerAssets>,
     ) -> Vc<Self> {
         Self::cell(EcmascriptModuleAsset {
             source,
