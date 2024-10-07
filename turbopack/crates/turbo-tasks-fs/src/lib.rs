@@ -62,8 +62,8 @@ use tokio::{
 };
 use tracing::Instrument;
 use turbo_tasks::{
-    mark_stateful, trace::TraceRawVcs, Completion, Invalidator, RcStr, ReadRef, ResolvedVc,
-    SerializationInvalidator, ValueToString, Vc,
+    mark_session_dependent, trace::TraceRawVcs, Completion, Invalidator, RcStr, ReadRef,
+    ResolvedVc, ValueToString, Vc,
 };
 use turbo_tasks_hash::{
     hash_xxh3_hash128, hash_xxh3_hash64, DeterministicHash, DeterministicHasher,
@@ -210,8 +210,6 @@ pub struct DiskFileSystem {
     invalidator_map: Arc<InvalidatorMap>,
     #[turbo_tasks(debug_ignore, trace_ignore)]
     dir_invalidator_map: Arc<InvalidatorMap>,
-    #[turbo_tasks(debug_ignore, trace_ignore)]
-    serialization_invalidator: SerializationInvalidator,
     /// Lock that makes invalidation atomic. It will keep a write lock during
     /// watcher invalidation and a read lock during other operations.
     #[turbo_tasks(debug_ignore, trace_ignore)]
@@ -232,7 +230,6 @@ impl DiskFileSystem {
     fn register_invalidator(&self, path: &Path) -> Result<()> {
         let invalidator = turbo_tasks::get_invalidator();
         self.invalidator_map.insert(path_to_key(path), invalidator);
-        self.serialization_invalidator.invalidate();
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         if let Some(dir) = path.parent() {
             self.watcher.ensure_watching(dir, self.root_path())?;
@@ -248,7 +245,6 @@ impl DiskFileSystem {
         let mut invalidator_map = self.invalidator_map.lock().unwrap();
         let old_invalidators = invalidator_map.insert(path_to_key(path), [invalidator].into());
         drop(invalidator_map);
-        self.serialization_invalidator.invalidate();
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         if let Some(dir) = path.parent() {
             self.watcher.ensure_watching(dir, self.root_path())?;
@@ -262,7 +258,6 @@ impl DiskFileSystem {
         let invalidator = turbo_tasks::get_invalidator();
         self.dir_invalidator_map
             .insert(path_to_key(path), invalidator);
-        self.serialization_invalidator.invalidate();
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         self.watcher.ensure_watching(path, self.root_path())?;
         Ok(())
@@ -289,7 +284,6 @@ impl DiskFileSystem {
             let _guard = handle.enter();
             i.invalidate()
         });
-        self.serialization_invalidator.invalidate();
     }
 
     pub fn invalidate_with_reason(&self) {
@@ -313,7 +307,6 @@ impl DiskFileSystem {
             let _guard = handle.enter();
             invalidator.invalidate_with_reason(reason)
         });
-        self.serialization_invalidator.invalidate();
     }
 
     pub fn start_watching(&self, poll_interval: Option<Duration>) -> Result<()> {
@@ -349,9 +342,7 @@ impl DiskFileSystem {
             invalidator_map,
             dir_invalidator_map,
             poll_interval,
-            self.serialization_invalidator.clone(),
         )?;
-        self.serialization_invalidator.invalidate();
 
         Ok(())
     }
@@ -428,7 +419,7 @@ impl DiskFileSystem {
     ///   ignore specific subpaths from each.
     #[turbo_tasks::function]
     pub async fn new(name: RcStr, root: RcStr, ignored_subpaths: Vec<RcStr>) -> Result<Vc<Self>> {
-        let serialization_invalidator = mark_stateful();
+        mark_session_dependent();
         // create the directory for the filesystem on disk, if it doesn't exist
         fs::create_dir_all(&root).await?;
 
@@ -439,7 +430,6 @@ impl DiskFileSystem {
             invalidation_lock: Default::default(),
             invalidator_map: Arc::new(InvalidatorMap::new()),
             dir_invalidator_map: Arc::new(InvalidatorMap::new()),
-            serialization_invalidator,
             watcher: Arc::new(DiskWatcher::new(
                 ignored_subpaths.into_iter().map(PathBuf::from).collect(),
             )),
@@ -453,6 +443,7 @@ impl DiskFileSystem {
         &self,
         fs_path: Vc<FileSystemPath>,
     ) -> Result<Vc<InternalDirectoryContent>> {
+        mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
         self.register_dir_invalidator(&full_path)?;
 
@@ -576,6 +567,7 @@ impl FileSystem for DiskFileSystem {
 
     #[turbo_tasks::function(fs)]
     async fn read_link(&self, fs_path: Vc<FileSystemPath>) -> Result<Vc<LinkContent>> {
+        mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
         self.register_invalidator(&full_path)?;
 
@@ -660,6 +652,7 @@ impl FileSystem for DiskFileSystem {
 
     #[turbo_tasks::function(fs)]
     async fn track(&self, fs_path: Vc<FileSystemPath>) -> Result<Vc<Completion>> {
+        mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
         self.register_invalidator(&full_path)?;
         Ok(Completion::new())
@@ -671,6 +664,7 @@ impl FileSystem for DiskFileSystem {
         fs_path: Vc<FileSystemPath>,
         content: Vc<FileContent>,
     ) -> Result<Vc<Completion>> {
+        mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
         let full_path = validate_path_length(&full_path)?;
 
@@ -699,7 +693,6 @@ impl FileSystem for DiskFileSystem {
                 for i in old_invalidators {
                     self.invalidator_map.insert(key.clone(), i);
                 }
-                self.serialization_invalidator.invalidate();
             }
             return Ok(Completion::unchanged());
         }
@@ -788,6 +781,7 @@ impl FileSystem for DiskFileSystem {
         fs_path: Vc<FileSystemPath>,
         target: Vc<LinkContent>,
     ) -> Result<Vc<Completion>> {
+        mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
         // TODO(sokra) preform a untracked read here, register an invalidator and get
         // all existing invalidators
@@ -870,6 +864,7 @@ impl FileSystem for DiskFileSystem {
 
     #[turbo_tasks::function(fs)]
     async fn metadata(&self, fs_path: Vc<FileSystemPath>) -> Result<Vc<FileMeta>> {
+        mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
         self.register_invalidator(&full_path)?;
 
