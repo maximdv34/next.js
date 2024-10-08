@@ -4,7 +4,7 @@ use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::{AsyncModuleInfo, ChunkableModule, ChunkingContext, EvaluatableAsset},
     ident::AssetIdent,
-    module::Module,
+    module::{Module, OptionModule},
     reference::{ModuleReference, ModuleReferences, SingleModuleReference},
     resolve::ModulePart,
 };
@@ -170,9 +170,12 @@ impl Module for EcmascriptModulePartAsset {
         }
 
         let deps = {
-            let part_id = get_part_id(&split_data, self.part)
+            let Some(part_id) = get_part_id(&split_data, self.part)
                 .await
-                .with_context(|| format!("part {:?} is not found in the module", self.part))?;
+                .with_context(|| format!("part {:?} is not found in the module", self.part))?
+            else {
+                return Ok(analyze.references);
+            };
 
             match deps.get(&part_id) {
                 Some(v) => &**v,
