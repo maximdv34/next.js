@@ -719,9 +719,6 @@ pub fn round_chunk_item_size(size: usize) -> usize {
     size & (a | (a >> 1) | (a >> 2))
 }
 
-#[turbo_tasks::value(transparent)]
-pub struct ChunkItems(Vec<ResolvedVc<Box<dyn ChunkItem>>>);
-
 #[turbo_tasks::value]
 pub struct AsyncModuleInfo {
     pub referenced_async_modules: AutoSet<Vc<Box<dyn ChunkItem>>>,
