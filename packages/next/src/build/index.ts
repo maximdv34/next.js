@@ -1409,7 +1409,8 @@ export default async function build(
             browserslistQuery: supportedBrowsers.join(', '),
           },
           {
-            persistentCaching: config.experimental.turbo?.persistentCaching,
+            persistentCaching:
+              config.experimental.turbo?.persistentCaching ?? true,
             memoryLimit: config.experimental.turbo?.memoryLimit,
           }
         )
