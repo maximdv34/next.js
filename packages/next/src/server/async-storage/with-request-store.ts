@@ -64,6 +64,7 @@ export type RequestContext = RequestResponsePair & {
      */
     search?: string
   }
+  phase: RequestStore['phase']
   renderOpts?: WrapperRenderOpts
   isHmrRefresh?: boolean
   serverComponentsHmrCache?: ServerComponentsHmrCache
@@ -110,6 +111,7 @@ export const withRequestStore: WithStore<WorkUnitStore, RequestContext> = <
     req,
     url,
     res,
+    phase,
     renderOpts,
     isHmrRefresh,
     serverComponentsHmrCache,
@@ -131,6 +133,7 @@ export const withRequestStore: WithStore<WorkUnitStore, RequestContext> = <
 
   const store: RequestStore = {
     type: 'request',
+    phase,
     // Rather than just using the whole `url` here, we pull the parts we want
     // to ensure we don't use parts of the URL that we shouldn't. This also
     // lets us avoid requiring an empty string for `search` in the type.

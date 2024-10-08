@@ -350,6 +350,7 @@ export class AppRouteRouteModule extends RouteModule<
           const prospectiveRoutePrerenderStore: PrerenderStore =
             (prerenderStore = {
               type: 'prerender',
+              phase: 'render',
               renderSignal: prospectiveController.signal,
               pathname,
               cacheSignal,
@@ -427,6 +428,7 @@ export class AppRouteRouteModule extends RouteModule<
 
           const finalRoutePrerenderStore: PrerenderStore = (prerenderStore = {
             type: 'prerender',
+            phase: 'render',
             renderSignal: finalController.signal,
             pathname,
             cacheSignal: null,
@@ -507,6 +509,7 @@ export class AppRouteRouteModule extends RouteModule<
         } else {
           prerenderStore = {
             type: 'prerender-legacy',
+            phase: 'render',
             pathname,
             revalidate: defaultRevalidate,
             tags: null,
@@ -611,6 +614,7 @@ export class AppRouteRouteModule extends RouteModule<
       req,
       res: undefined,
       url: req.nextUrl,
+      phase: 'action',
       renderOpts: {
         previewProps: context.prerenderManifest.preview,
       },

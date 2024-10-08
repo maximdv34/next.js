@@ -10,8 +10,16 @@ import type { DynamicTrackingState } from './dynamic-rendering'
 import { workUnitAsyncStorage } from './work-unit-async-storage-instance' with { 'turbopack-transition': 'next-shared' }
 import type { ServerComponentsHmrCache } from '../response-cache'
 
+type RenderPhase = 'render' | 'after'
+
+type PhasePartial = {
+  /** Mutable. Describes if the work unit is in-progress or finished.  */
+  phase: RenderPhase
+}
+
 export type RequestStore = {
   type: 'request'
+  phase: 'action' | RenderPhase
 
   /**
    * The URL of the request. This only specifies the pathname and the search
@@ -79,10 +87,11 @@ export type PrerenderStoreModern = {
   // Collected revalidate times and tags for this document during the prerender.
   revalidate: number // in seconds. 0 means dynamic. INFINITE_CACHE and higher means never revalidate.
   tags: null | string[]
-}
+} & PhasePartial
 
 export type PrerenderStorePPR = {
   type: 'prerender-ppr'
+  phase: RenderPhase
   pathname: string | undefined
   readonly dynamicTracking: null | DynamicTrackingState
   // Collected revalidate times and tags for this document during the prerender.
@@ -96,7 +105,7 @@ export type PrerenderStoreLegacy = {
   // Collected revalidate times and tags for this document during the prerender.
   revalidate: number // in seconds. 0 means dynamic. INFINITE_CACHE and higher means never revalidate.
   tags: null | string[]
-}
+} & PhasePartial
 
 export type PrerenderStore =
   | PrerenderStoreLegacy
@@ -108,11 +117,11 @@ export type UseCacheStore = {
   // Collected revalidate times and tags for this cache entry during the cache render.
   revalidate: number // in seconds. INFINITE_CACHE and higher means never revalidate.
   tags: null | string[]
-}
+} & PhasePartial
 
 export type UnstableCacheStore = {
   type: 'unstable-cache'
-}
+} & PhasePartial
 
 /**
  * The Cache store is for tracking information inside a "use cache" or unstable_cache context.

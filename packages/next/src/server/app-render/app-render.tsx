@@ -375,6 +375,7 @@ async function generateDynamicRSCPayload(
     skipFlight: boolean
   }
 ): Promise<RSCPayload> {
+  ctx.requestStore.phase = 'render'
   // Flight data that is going to be passed to the browser.
   // Currently a single item array but in the future multiple patches might be combined in a single request.
 
@@ -1293,6 +1294,7 @@ export const renderToHTMLOrFlight: AppPageRender = (
       req,
       url,
       res,
+      phase: 'render',
       renderOpts,
       isHmrRefresh,
       serverComponentsHmrCache,
@@ -1731,6 +1733,8 @@ async function prerenderToStream(
   workStore: WorkStore,
   tree: LoaderTree
 ): Promise<PrerenderToStreamResult> {
+  ctx.requestStore.phase = 'render'
+
   // When prerendering formState is always null. We still include it
   // because some shared APIs expect a formState value and this is slightly
   // more explicit than making it an optional function argument
@@ -1852,6 +1856,7 @@ async function prerenderToStream(
         const prospectiveRenderPrerenderStore: PrerenderStore =
           (prerenderStore = {
             type: 'prerender',
+            phase: 'render',
             pathname: ctx.requestStore.url.pathname,
             renderSignal: flightController.signal,
             cacheSignal,
@@ -1950,6 +1955,7 @@ async function prerenderToStream(
 
         const finalRenderPrerenderStore: PrerenderStore = (prerenderStore = {
           type: 'prerender',
+          phase: 'render',
           pathname: ctx.requestStore.url.pathname,
           renderSignal: flightController.signal,
           // During the final prerender we don't need to track cache access so we omit the signal
@@ -2014,6 +2020,7 @@ async function prerenderToStream(
         const SSRController = new AbortController()
         const ssrPrerenderStore: PrerenderStore = {
           type: 'prerender',
+          phase: 'render',
           pathname: ctx.requestStore.url.pathname,
           renderSignal: SSRController.signal,
           // For HTML Generation we don't need to track cache reads (RSC only)
@@ -2231,6 +2238,7 @@ async function prerenderToStream(
         const prospectiveRenderPrerenderStore: PrerenderStore =
           (prerenderStore = {
             type: 'prerender',
+            phase: 'render',
             pathname: ctx.requestStore.url.pathname,
             renderSignal: flightController.signal,
             cacheSignal,
@@ -2318,6 +2326,7 @@ async function prerenderToStream(
 
         const finalRenderPrerenderStore: PrerenderStore = (prerenderStore = {
           type: 'prerender',
+          phase: 'render',
           pathname: ctx.requestStore.url.pathname,
           renderSignal: flightController.signal,
           // During the final prerender we don't need to track cache access so we omit the signal
@@ -2336,6 +2345,7 @@ async function prerenderToStream(
         const SSRController = new AbortController()
         const ssrPrerenderStore: PrerenderStore = {
           type: 'prerender',
+          phase: 'render',
           pathname: ctx.requestStore.url.pathname,
           renderSignal: SSRController.signal,
           // For HTML Generation we don't need to track cache reads (RSC only)
@@ -2525,6 +2535,7 @@ async function prerenderToStream(
       )
       const reactServerPrerenderStore: PrerenderStore = (prerenderStore = {
         type: 'prerender-ppr',
+        phase: 'render',
         pathname: ctx.requestStore.url.pathname,
         dynamicTracking,
         revalidate: INFINITE_CACHE,
@@ -2558,6 +2569,7 @@ async function prerenderToStream(
 
       const ssrPrerenderStore: PrerenderStore = {
         type: 'prerender-ppr',
+        phase: 'render',
         pathname: ctx.requestStore.url.pathname,
         dynamicTracking,
         revalidate: INFINITE_CACHE,
@@ -2727,6 +2739,7 @@ async function prerenderToStream(
     } else {
       const prerenderLegacyStore: PrerenderStore = (prerenderStore = {
         type: 'prerender-legacy',
+        phase: 'render',
         pathname: ctx.requestStore.url.pathname,
         revalidate: INFINITE_CACHE,
         tags: null,
@@ -2889,6 +2902,7 @@ async function prerenderToStream(
 
     const prerenderLegacyStore: PrerenderStore = (prerenderStore = {
       type: 'prerender-legacy',
+      phase: 'render',
       pathname: ctx.requestStore.url.pathname,
       revalidate: INFINITE_CACHE,
       tags: null,

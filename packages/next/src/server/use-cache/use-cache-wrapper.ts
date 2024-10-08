@@ -138,6 +138,7 @@ function generateCacheEntryWithCacheContext(
   // Initialize the Store for this Cache entry.
   const cacheStore: UseCacheStore = {
     type: 'cache',
+    phase: 'render',
     revalidate: INFINITE_CACHE,
     tags: null,
   }
