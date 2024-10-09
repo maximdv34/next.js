@@ -3,6 +3,7 @@ import { workUnitAsyncStorage } from '../app-render/work-unit-async-storage.exte
 import { StaticGenBailoutError } from '../../client/components/static-generation-bailout'
 
 import { markCurrentScopeAsDynamic } from '../app-render/dynamic-rendering'
+import { InvariantError } from '../../shared/lib/invariant-error'
 
 export type AfterTask<T = unknown> = Promise<T> | AfterCallback<T>
 export type AfterCallback<T = unknown> = () => T | Promise<T>
@@ -14,26 +15,26 @@ export function unstable_after<T>(task: AfterTask<T>): void {
   const workStore = workAsyncStorage.getStore()
   const workUnitStore = workUnitAsyncStorage.getStore()
 
-  if (workStore) {
-    const { afterContext } = workStore
-    if (!afterContext) {
-      throw new Error(
-        '`unstable_after()` must be explicitly enabled by setting `experimental.after: true` in your next.config.js.'
-      )
-    }
-
-    // TODO: After should not cause dynamic.
-    const callingExpression = 'unstable_after'
-    if (workStore.forceStatic) {
-      throw new StaticGenBailoutError(
-        `Route ${workStore.route} with \`dynamic = "force-static"\` couldn't be rendered statically because it used \`${callingExpression}\`. See more info here: https://nextjs.org/docs/app/building-your-application/rendering/static-and-dynamic#dynamic-rendering`
-      )
-    } else {
-      markCurrentScopeAsDynamic(workStore, workUnitStore, callingExpression)
-    }
-
-    afterContext.after(task)
-  } else {
-    // TODO: Error for pages?
+  if (!workStore) {
+    throw new InvariantError('Missing workStore in unstable_after()')
   }
+
+  const { afterContext } = workStore
+  if (!afterContext) {
+    throw new Error(
+      '`unstable_after()` must be explicitly enabled by setting `experimental.after: true` in your next.config.js.'
+    )
+  }
+
+  // TODO: After should not cause dynamic.
+  const callingExpression = 'unstable_after'
+  if (workStore.forceStatic) {
+    throw new StaticGenBailoutError(
+      `Route ${workStore.route} with \`dynamic = "force-static"\` couldn't be rendered statically because it used \`${callingExpression}\`. See more info here: https://nextjs.org/docs/app/building-your-application/rendering/static-and-dynamic#dynamic-rendering`
+    )
+  } else {
+    markCurrentScopeAsDynamic(workStore, workUnitStore, callingExpression)
+  }
+
+  afterContext.after(task)
 }
