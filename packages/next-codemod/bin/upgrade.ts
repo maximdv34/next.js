@@ -125,7 +125,9 @@ export async function runUpgrade(
     await runTransform(codemod, process.cwd(), { force: true })
   }
 
-  await suggestReactCodemods(packageManager)
+  if (targetReactVersion.startsWith('19')) {
+    await suggestReactCodemods(packageManager)
+  }
 
   console.log(
     `\n${pc.green('✔')} Your Next.js project has been upgraded successfully. ${pc.bold('Time to ship! 🚢')}`
