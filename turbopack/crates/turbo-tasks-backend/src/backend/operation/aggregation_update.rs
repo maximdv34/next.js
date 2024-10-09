@@ -183,6 +183,15 @@ impl AggregatedDataUpdate {
         } = self;
         let mut result = Self::default();
         if let Some((dirty_container_id, count)) = dirty_container_update {
+            // When a dirty container count is increased and the task is considered as active
+            // `AggregateRoot` we need to schedule the dirty tasks in the new dirty container
+            let current_session_update = count.get(session_id);
+            if current_session_update > 0 && task.has_key(&CachedDataItemKey::AggregateRoot {}) {
+                queue.push(AggregationUpdateJob::FindAndScheduleDirty {
+                    task_ids: vec![*dirty_container_id],
+                })
+            }
+
             let mut aggregated_update = Default::default();
             update!(
                 task,
@@ -195,12 +204,7 @@ impl AggregatedDataUpdate {
                     (!new.is_default()).then_some(new)
                 }
             );
-            let current_session_update = aggregated_update.get(session_id);
-            if current_session_update > 0 && task.has_key(&CachedDataItemKey::AggregateRoot {}) {
-                queue.push(AggregationUpdateJob::FindAndScheduleDirty {
-                    task_ids: vec![*dirty_container_id],
-                })
-            }
+
             let dirty_state = get!(task, Dirty).copied();
             let task_id = task.id();
             update!(task, AggregatedDirtyContainerCount, |old: Option<
@@ -563,20 +567,22 @@ impl AggregationUpdateQueue {
         }
         if let Some(task_id) = popped {
             let mut task = ctx.task(task_id, TaskDataCategory::Meta);
-            #[allow(clippy::collapsible_if, reason = "readablility")]
-            if task.has_key(&CachedDataItemKey::Dirty {}) {
+            let session_id = ctx.session_id();
+            let dirty = get!(task, Dirty).map_or(false, |d| d.get(session_id));
+            if dirty {
                 let description = ctx.backend.get_task_desc_fn(task_id);
                 if task.add(CachedDataItem::new_scheduled(description)) {
                     ctx.turbo_tasks.schedule(task_id);
                 }
             }
             if is_aggregating_node(get_aggregation_number(&task)) {
+                // TODO if it has an `AggregateRoot` we can skip visiting the nested nodes since
+                // this would already be scheduled by the `AggregateRoot`
                 if !task.has_key(&CachedDataItemKey::AggregateRoot {}) {
                     task.insert(CachedDataItem::AggregateRoot {
                         value: RootState::new(ActiveType::CachedActiveUntilClean, task_id),
                     });
                 }
-                let session_id = ctx.session_id();
                 let dirty_containers: Vec<_> = get_many!(task, AggregatedDirtyContainer { task } count if count.get(session_id) > 0 => task);
                 if !dirty_containers.is_empty() {
                     self.push(AggregationUpdateJob::FindAndScheduleDirty {
