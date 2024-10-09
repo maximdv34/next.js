@@ -125,7 +125,9 @@ export async function runUpgrade(
     await runTransform(codemod, process.cwd(), { force: true })
   }
 
-  if (targetReactVersion.startsWith('19')) {
+  // Release https://github.com/vercel/next.js/releases/tag/v14.3.0-canary.45
+  // PR https://github.com/vercel/next.js/pull/65058
+  if (compareVersions(targetNextVersion, '14.3.0-canary.45') >= 0) {
     await suggestReactCodemods(packageManager)
   }
 
