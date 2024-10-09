@@ -270,6 +270,7 @@ export const configSchema: zod.ZodType<NextConfig> = z.lazy(() =>
             static: z.number().optional(),
           })
           .optional(),
+        cacheHandlers: z.record(z.string(), z.string().optional()).optional(),
         clientRouterFilter: z.boolean().optional(),
         clientRouterFilterRedirects: z.boolean().optional(),
         clientRouterFilterAllowedRate: z.number().optional(),
