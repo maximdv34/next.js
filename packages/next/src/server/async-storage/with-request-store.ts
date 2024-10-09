@@ -19,6 +19,7 @@ import {
   MutableRequestCookiesAdapter,
   RequestCookiesAdapter,
   responseCookiesToRequestCookies,
+  setMutableCookieUnchecked,
   type ReadonlyRequestCookies,
 } from '../web/spec-extension/adapters/request-cookies'
 import { ResponseCookies, RequestCookies } from '../web/spec-extension/cookies'
@@ -99,7 +100,11 @@ function mergeMiddlewareCookies(
 
     // Transfer cookies from ResponseCookies to RequestCookies
     for (const cookie of responseCookies.getAll()) {
-      existingCookies.set(cookie)
+      if (existingCookies instanceof ResponseCookies) {
+        setMutableCookieUnchecked(existingCookies, cookie)
+      } else {
+        existingCookies.set(cookie)
+      }
     }
   }
 }
