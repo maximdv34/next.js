@@ -125,6 +125,8 @@ export async function runUpgrade(
     await runTransform(codemod, process.cwd(), { force: true })
   }
 
+  await suggestReactCodemods(packageManager)
+
   console.log(
     `\n${pc.green('✔')} Your Next.js project has been upgraded successfully. ${pc.bold('Time to ship! 🚢')}`
   )
@@ -249,4 +251,32 @@ async function suggestCodemods(
   )
 
   return codemods
+}
+
+async function suggestReactCodemods(packageManager: PackageManager) {
+  const { runReactCodemod } = await prompts(
+    {
+      type: 'toggle',
+      name: 'runReactCodemod',
+      message: 'Do you want to run the React codemod?',
+      initial: true,
+      active: 'Yes',
+      inactive: 'No',
+    },
+    { onCancel }
+  )
+
+  if (runReactCodemod) {
+    const commandMap = {
+      yarn: 'yarn dlx',
+      pnpm: 'pnpx',
+      bun: 'bunx',
+      npm: 'npx',
+    }
+    const command = commandMap[packageManager] || 'npx'
+
+    execSync(`${command} codemod@latest react/19/migration-recipe`, {
+      stdio: 'inherit',
+    })
+  }
 }
