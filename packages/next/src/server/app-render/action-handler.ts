@@ -43,6 +43,7 @@ import { fromNodeOutgoingHttpHeaders } from '../web/utils'
 import { selectWorkerForForwarding } from './action-utils'
 import { isNodeNextRequest, isWebNextRequest } from '../base-http/helpers'
 import { RedirectStatusCode } from '../../client/components/redirect-status-code'
+import { synchronizeMutableCookies } from '../async-storage/with-request-store'
 
 function formDataFromSearchQueryString(query: string) {
   const searchParams = new URLSearchParams(query)
@@ -459,6 +460,11 @@ export async function handleAction({
     )
   }
 
+  const finalizeAndGenerateFlight: GenerateFlight = (...args) => {
+    synchronizeMutableCookies(requestStore)
+    return generateFlight(...args)
+  }
+
   requestStore.phase = 'action'
 
   // When running actions the default is no-store, you can still `cache: 'force-cache'`
@@ -548,7 +554,7 @@ export async function handleAction({
 
         return {
           type: 'done',
-          result: await generateFlight(req, ctx, {
+          result: await finalizeAndGenerateFlight(req, ctx, {
             actionResult: promise,
             // if the page was not revalidated, we can skip the rendering the flight tree
             skipFlight: !workStore.pathWasRevalidated,
@@ -841,7 +847,7 @@ export async function handleAction({
           requestStore,
         })
 
-        actionResult = await generateFlight(req, ctx, {
+        actionResult = await finalizeAndGenerateFlight(req, ctx, {
           actionResult: Promise.resolve(returnVal),
           // if the page was not revalidated, or if the action was forwarded from another worker, we can skip the rendering the flight tree
           skipFlight: !workStore.pathWasRevalidated || actionWasForwarded,
@@ -916,7 +922,7 @@ export async function handleAction({
         }
         return {
           type: 'done',
-          result: await generateFlight(req, ctx, {
+          result: await finalizeAndGenerateFlight(req, ctx, {
             skipFlight: false,
             actionResult: promise,
           }),

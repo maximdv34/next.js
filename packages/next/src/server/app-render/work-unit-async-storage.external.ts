@@ -39,7 +39,7 @@ export type RequestStore = {
   }
 
   readonly headers: ReadonlyHeaders
-  readonly cookies: ReadonlyRequestCookies
+  cookies: ReadonlyRequestCookies
   readonly mutableCookies: ResponseCookies
   readonly draftMode: DraftModeProvider
   readonly isHmrRefresh?: boolean
