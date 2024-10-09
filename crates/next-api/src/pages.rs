@@ -34,6 +34,7 @@ use turbo_tasks_fs::{
 };
 use turbopack::{
     module_options::ModuleOptionsContext,
+    nft_json::NftJsonAsset,
     resolve_options_context::ResolveOptionsContext,
     transition::{ContextTransition, TransitionOptions},
     ModuleAssetContext,
@@ -875,9 +876,12 @@ impl PageEndpoint {
                 )
                 .await?;
 
+                let nft = Vc::upcast(NftJsonAsset::new(ssr_module, Some(ssr_entry_chunk)));
+
                 Ok(SsrChunk::NodeJs {
                     entry: ssr_entry_chunk,
                     dynamic_import_entries,
+                    nft,
                 }
                 .cell())
             }
@@ -1071,10 +1075,12 @@ impl PageEndpoint {
             SsrChunk::NodeJs {
                 entry,
                 dynamic_import_entries,
+                nft,
             } => {
                 let pages_manifest = self.pages_manifest(entry);
                 server_assets.push(pages_manifest);
                 server_assets.push(entry);
+                server_assets.push(nft);
 
                 let loadable_manifest_output = self.react_loadable_manifest(dynamic_import_entries);
                 server_assets.extend(loadable_manifest_output.await?.iter().copied());
@@ -1351,6 +1357,7 @@ pub enum SsrChunk {
     NodeJs {
         entry: Vc<Box<dyn OutputAsset>>,
         dynamic_import_entries: Vc<DynamicImportedChunks>,
+        nft: Vc<Box<dyn OutputAsset>>,
     },
     Edge {
         files: Vc<OutputAssets>,
